@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка организации</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#f2f5f7;color:#0e1a21;font-family:"Segoe UI",system-ui,sans-serif;
+       line-height:1.5;padding:26px 20px 60px}
+  .wrap{max-width:900px;margin:0 auto}
+
+  h1{font-size:25px;letter-spacing:-.3px;margin-bottom:16px}
+
+  .bar{display:flex;gap:8px;margin-bottom:10px}
+  .bar input{flex:1;font-size:15px;padding:11px 14px;border:1px solid #c8d2da;
+             border-radius:9px;min-width:100px}
+  .bar input:focus{outline:2px solid #0a6e63;border-color:transparent}
+  .bar button{background:#0a6e63;color:#fff;border:none;border-radius:9px;
+              padding:11px 24px;font-size:15px;font-weight:600;font-family:inherit;
+              cursor:pointer;white-space:nowrap}
+  .bar button:hover{background:#0d8577}
+
+  .filters{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px}
+  .filters label{font-size:13px;color:#8a9aa3;display:flex;align-items:center;gap:7px}
+  .filters select{font-size:13.5px;font-family:inherit;color:#1d2b33;padding:6px 9px;
+                  border:1px solid #c8d2da;border-radius:7px;background:#fff}
+
+  .hints{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .hints button{background:#eef2f4;border:1px solid #dbe3e7;color:#42525c;border-radius:7px;
+                padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:inherit}
+  .hints button:hover{background:#e0e8ec}
+
+  .status{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+          padding:10px 14px;background:#fff;border:1px solid #d3dde3;
+          border-radius:9px;margin-bottom:14px;font-size:14px}
+  .status .code{font-family:Consolas,monospace;font-size:19px;font-weight:700}
+  .c2{color:#2f6f4f}.c4{color:#b57a1a}.c5{color:#a33417}.c0{color:#8a9aa3}
+  .status .txt{color:#42525c}
+  .status .raw{margin-left:auto}
+  .status .raw button{background:none;border:1px solid #c8d8d3;color:#0a6e63;
+                      border-radius:7px;padding:4px 11px;font-size:12.5px;cursor:pointer;
+                      font-family:inherit}
+
+  .card{background:#fff;border:1px solid #d3dde3;border-radius:11px;
+        padding:14px 16px;margin-bottom:9px}
+  .card .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+  .card .nm{font-size:16px;font-weight:700}
+  .badge{font-size:11.5px;padding:2px 9px;border-radius:12px;white-space:nowrap}
+  .badge.ok{background:#e3f2ea;color:#2f6f4f}
+  .badge.warn{background:#fdf4e3;color:#7a4906}
+  .badge.bad{background:#fae6e0;color:#a33417}
+  .badge.type{background:#eef2f4;color:#55636c}
+
+  .grid{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
+  .grid dt{color:#8a9aa3}
+  .grid dd{color:#1d2b33;font-family:Consolas,monospace;word-break:break-word}
+
+  pre{background:#0f1418;color:#cfe3dd;border-radius:11px;padding:16px;
+      font-family:Consolas,monospace;font-size:12.5px;line-height:1.6;
+      overflow:auto;max-height:460px;white-space:pre-wrap;word-break:break-word}
+
+  .msg{background:#fff;border:1px solid #d3dde3;border-radius:11px;
+       padding:18px;color:#55636c;font-size:14.5px}
+  .msg.err{background:#fdf0ec;border-color:#e3a695;color:#8a2c12}
+  .hid{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Проверка организации</h1>
+
+  <div class="bar">
+    <input id="q" placeholder="название, ИНН или ОГРН" spellcheck="false" value="сбербанк">
+    <button id="go">Найти</button>
+  </div>
+
+  <div class="filters">
+    <label>Кто
+      <select id="type">
+        <option value="">любые</option>
+        <option value="LEGAL">организации</option>
+        <option value="INDIVIDUAL">ИП</option>
+      </select>
+    </label>
+    <label>Состояние
+      <select id="statusFilter">
+        <option value="">по умолчанию</option>
+        <option value="ACTIVE">действующие</option>
+        <option value="LIQUIDATED">ликвидированные</option>
+        <option value="BANKRUPT">банкроты</option>
+        <option value="ACTIVE,LIQUIDATING,LIQUIDATED,BANKRUPT,REORGANIZING">все сразу</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="hints" id="hints"></div>
+
+  <div class="status hid" id="status">
+    <span class="code c0" id="code">—</span>
+    <span class="txt" id="txt"></span>
+    <span class="raw"><button id="toggle">сырой JSON</button></span>
+  </div>
+
+  <div id="out"><div class="msg">Введи название и нажми «Найти».</div></div>
+  <pre class="hid" id="raw"></pre>
+
+</div>
+
+<script>
+  const el = (id) => document.getElementById(id);
+
+  const STATUS = {
+    ACTIVE:       ['действующая',   'ok'],
+    LIQUIDATING:  ['ликвидируется', 'warn'],
+    LIQUIDATED:   ['ликвидирована', 'bad'],
+    BANKRUPT:     ['банкротство',   'bad'],
+    REORGANIZING: ['реорганизация', 'warn']
+  };
+
+  const TYPE = { LEGAL: 'организация', INDIVIDUAL: 'ИП' };
+
+  const EXAMPLES = ['сбербанк', 'яндекс', '7707083893', 'ромашка', 'рога и копыта', 'иванов'];
+
+  function esc(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function date(ms) {
+    if (!ms) return '—';
+    return new Date(ms).toLocaleDateString('ru-RU');
+  }
+
+  function row(name, value) {
+    if (value === null || value === undefined || value === '') return '';
+    return '<dt>' + name + '</dt><dd>' + esc(value) + '</dd>';
+  }
+
+  function card(s) {
+    const d = s.data || {};
+    const st = STATUS[d.state && d.state.status] || [d.state && d.state.status || '—', 'type'];
+    const man = d.management || {};
+
+    let html = '<div class="card"><div class="top">';
+    html += '<span class="nm">' + esc(s.value) + '</span>';
+    html += '<span class="badge ' + st[1] + '">' + st[0] + '</span>';
+    html += '<span class="badge type">' + (TYPE[d.type] || d.type || '—') + '</span>';
+    html += '</div><dl class="grid">';
+    html += row('ИНН', d.inn);
+    html += row('КПП', d.kpp);
+    html += row('ОГРН', d.ogrn);
+    html += row('зарегистрирована', date(d.state && d.state.registration_date));
+    html += row('ликвидирована', d.state && d.state.liquidation_date ? date(d.state.liquidation_date) : '');
+    html += row('руководитель', man.name ? man.name + (man.post ? ' — ' + man.post.toLowerCase() : '') : '');
+    html += row('адрес', d.address && d.address.value);
+    html += row('ОКВЭД', d.okved);
+    html += row('филиалов', d.branch_count);
+    html += '</dl></div>';
+    return html;
+  }
+
+  async function search() {
+    const query = el('q').value.trim();
+    if (!query) return;
+
+    el('status').classList.remove('hid');
+    el('code').textContent = '...';
+    el('code').className = 'code c0';
+    el('txt').textContent = 'спрашиваю';
+    el('out').innerHTML = '<div class="msg">Запрос ушёл…</div>';
+
+    let r, got;
+    try {
+      const payload = { query: query, count: 10 };
+      const type = el('type').value;
+      const status = el('statusFilter').value;
+      if (type) payload.type = type;
+      if (status) payload.status = status.split(',');
+
+      r = await fetch('search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      got = await r.json();
+    } catch (e) {
+      el('code').textContent = '—';
+      el('code').className = 'code c5';
+      el('txt').textContent = 'сервер не отвечает — он запущен?';
+      el('out').innerHTML = '<div class="msg err">Проверь окно терминала, где запускал node server.js</div>';
+      return;
+    }
+
+    if (got.ошибка) {
+      el('code').textContent = r.status;
+      el('code').className = 'code c' + String(r.status)[0];
+      el('txt').textContent = 'запрос в Dadata не отправлен';
+      el('out').innerHTML = '<div class="msg err">' + esc(got.ошибка) + '</div>';
+      el('raw').textContent = JSON.stringify(got, null, 2);
+      return;
+    }
+
+    const code = got.код;
+    const body = got.ответ || {};
+    el('code').textContent = code;
+    el('code').className = 'code c' + String(code)[0];
+    el('raw').textContent = JSON.stringify(body, null, 2);
+
+    const list = body.suggestions || [];
+
+    if (code !== 200) {
+      el('txt').textContent = 'Dadata ответила ошибкой — смотри сырой JSON';
+      el('out').innerHTML = '<div class="msg err">' +
+        esc(body.message || body.reason || 'Код ' + code) + '</div>';
+      return;
+    }
+
+    el('txt').textContent = 'найдено: ' + list.length;
+    el('out').innerHTML = list.length
+      ? list.map(card).join('')
+      : '<div class="msg">Ничего не найдено. Код всё равно 200 — сервер отработал, просто совпадений нет.</div>';
+  }
+
+  EXAMPLES.forEach((t) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.addEventListener('click', () => { el('q').value = t; search(); });
+    el('hints').appendChild(b);
+  });
+
+  el('type').addEventListener('change', search);
+  el('statusFilter').addEventListener('change', search);
+  el('go').addEventListener('click', search);
+  el('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+  el('toggle').addEventListener('click', () => el('raw').classList.toggle('hid'));
+</script>
+</body>
+</html>
